@@ -49,6 +49,26 @@
           <p id="error-login" class="error oculto"></p>
           <button type="submit" class="boton" id="boton-entrar">Entrar</button>
         </form>
+        <div id="bio-opciones" class="oculto">
+          <p class="nota-suave"></p>
+          <div class="bio-fila">
+            <button type="button" class="btn-cara oculto" id="entrar-huella" aria-label="Entrar con huella" title="Entrar con huella">
+              <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 21a15 15 0 0 1 30 0v3"/>
+                <path d="M14 24a10 10 0 0 1 20 0v5"/>
+                <path d="M19 24a5 5 0 0 1 10 0v9"/>
+                <path d="M24 24v14"/>
+                <path d="M14 30v3M34 33v4M9 27v6"/>
+              </svg>
+            </button>
+            <button type="button" class="btn-cara" id="entrar-biometrico" aria-label="Entrar con Face ID" title="Entrar con Face ID">
+              <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 16V11a5 5 0 0 1 5-5h5M32 6h5a5 5 0 0 1 5 5v5M42 32v5a5 5 0 0 1-5 5h-5M16 42h-5a5 5 0 0 1-5-5v-5"/>
+                <path d="M17 19v4M31 19v4M24 19v8h-3M17 33c4 3.4 10 3.4 14 0"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </section>
 
       <!-- Panel -->
@@ -125,9 +145,14 @@
     </main>
 
     <div id="pie-sesion" class="oculto">
+      <button id="activar-biometrico" class="oculto">Activar Face ID / huella en este celular</button>
+      <p id="mensaje-biometrico" class="nota-suave"></p>
       <button id="cerrar-sesion">Cerrar sesión</button>
     </div>
   </div>
+
+  <!-- Mensaje central mientras el celular espera la huella -->
+  <div id="aviso-huella" class="oculto"><p>Ingresar con huella</p></div>
 
   <!-- Ventana de confirmar -->
   <div id="fondo-confirmar" class="fondo-modal oculto">
@@ -143,7 +168,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script>
-    const db = window.supabase.createClient(window.GARAGE.SUPABASE_URL, window.GARAGE.SUPABASE_KEY);
+    const db = window.supabase.createClient(window.GARAGE.SUPABASE_URL, window.GARAGE.SUPABASE_KEY, {
+      auth: { experimental: { passkey: true } }
+    });
     const el = (id) => document.getElementById(id);
 
     function escapar(t) {
@@ -167,6 +194,7 @@
 
     // ---------- Acceso ----------
     function mostrarLogin() {
+      pintarOpcionesBio();
       el("vista-login").classList.remove("oculto");
       el("vista-app").classList.add("oculto");
       el("pie-sesion").classList.add("oculto");
@@ -197,6 +225,7 @@
       }
       el("clave").value = "";
       mostrarApp();
+      ofrecerBiometria();
     });
 
     el("cerrar-sesion").addEventListener("click", async function () {
@@ -206,12 +235,89 @@
       mostrarLogin();
     });
 
+    // ---------- Face ID / huella (passkeys) ----------
+    // Primer ingreso en un teléfono: solo correo y contraseña. Después se ofrece activarlo,
+    // y desde el segundo ingreso (si se cierra la sesión) aparecen los botones para elegir.
+    const hayBiometria = !!(window.PublicKeyCredential && window.isSecureContext &&
+      db.auth && typeof db.auth.signInWithPasskey === "function" && typeof db.auth.registerPasskey === "function");
+
+    // iPhone/iPad usan Face ID; el resto puede usar huella o cara
+    const esApple = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    function leer(k) { try { return localStorage.getItem(k) === "1"; } catch (e) { return false; } }
+    function guardar(k) { try { localStorage.setItem(k, "1"); } catch (e) {} }
+
+    function pintarOpcionesBio() {
+      const ver = hayBiometria && leer("biometria");
+      el("bio-opciones").classList.toggle("oculto", !ver);
+      el("entrar-huella").classList.toggle("oculto", esApple);
+    }
+
+    async function entrarBiometrico(conHuella) {
+      const err = el("error-login");
+      err.classList.add("oculto");
+      if (conHuella) el("aviso-huella").classList.remove("oculto");
+      try {
+        const r = await db.auth.signInWithPasskey();
+        if (r.error || !r.data || !r.data.session) throw (r.error || new Error("sin sesión"));
+        mostrarApp();
+      } catch (e) {
+        console.error(e);
+        err.textContent = "No se pudo entrar con " + (conHuella ? "la huella" : "Face ID") + ". Usa tu correo y contraseña.";
+        err.classList.remove("oculto");
+      }
+      el("aviso-huella").classList.add("oculto");
+    }
+
+    el("entrar-huella").addEventListener("click", function () { entrarBiometrico(true); });
+    el("entrar-biometrico").addEventListener("click", function () { entrarBiometrico(false); });
+
+    async function activarBiometria(msg) {
+      try {
+        const r = await db.auth.registerPasskey();
+        if (r && r.error) throw r.error;
+        guardar("biometria");
+        if (msg) msg.textContent = "Listo: la próxima vez podrás entrar con " + (esApple ? "Face ID" : "huella o Face ID") + " en este teléfono.";
+        return true;
+      } catch (e) {
+        console.error(e);
+        if (msg) msg.textContent = "No se pudo activar. Revisa que el teléfono tenga " + (esApple ? "Face ID" : "huella o Face ID") + " configurado e intenta de nuevo.";
+        return false;
+      }
+    }
+
+    // Botón del final de la página (para activarlo cuando quieras)
+    if (hayBiometria) el("activar-biometrico").classList.remove("oculto");
+    el("activar-biometrico").addEventListener("click", async function () {
+      const msg = el("mensaje-biometrico");
+      msg.textContent = "";
+      this.disabled = true;
+      await activarBiometria(msg);
+      this.disabled = false;
+    });
+
+    // Se ofrece una sola vez, justo después del primer ingreso con contraseña en este teléfono
+    async function ofrecerBiometria() {
+      if (!hayBiometria || leer("biometria") || leer("biometria_no")) return;
+      const quiere = await confirmar(
+        "¿Quieres entrar la próxima vez con " + (esApple ? "Face ID" : "huella o Face ID") + " en este teléfono?",
+        "Activar", "Ahora no", true);
+      if (quiere) {
+        await activarBiometria(el("mensaje-biometrico"));
+      } else {
+        guardar("biometria_no");
+      }
+    }
+
     // ---------- Ventana de confirmar ----------
-    function confirmar(texto, boton) {
+    function confirmar(texto, boton, cancelar, suave) {
       return new Promise(function (resolver) {
         const fondo = el("fondo-confirmar");
         el("texto-confirmar").textContent = texto;
         el("aceptar-confirmar").textContent = boton || "Confirmar";
+        el("cancelar-confirmar").textContent = cancelar || "Cancelar";
+        el("aceptar-confirmar").classList.toggle("peligro", !suave);
         fondo.classList.remove("oculto");
         function cerrar(v) { fondo.classList.add("oculto"); resolver(v); }
         el("aceptar-confirmar").onclick = function () { cerrar(true); };
