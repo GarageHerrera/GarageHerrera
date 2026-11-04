@@ -1,0 +1,15 @@
+{
+  "name": "GarageHerrera",
+  "short_name": "GarageHerrera",
+  "description": "Abre el portón y administra los accesos temporales",
+  "start_url": "admin.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    { "src": "icon-garage-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-garage-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
