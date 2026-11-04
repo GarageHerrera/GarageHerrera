@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0d1117">
+  <title>Garage Herrera · Admin</title>
+  <link rel="stylesheet" href="estilo.css">
+  <style>
+    .fondo-modal {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: rgba(0, 0, 0, 0.7);
+    }
+    .cuadro-modal {
+      width: 100%; max-width: 340px; padding: 20px; text-align: center;
+      background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px;
+    }
+    .cuadro-modal p { margin: 0 0 16px; }
+    .cuadro-modal .botones { display: flex; gap: 10px; justify-content: center; }
+    .dos-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .estado-fila { display: flex; justify-content: center; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="contenedor">
+    <header>
+      <h1>Garage Herrera</h1>
+      <p class="lema">Panel de administración</p>
+    </header>
+
+    <main>
+      <!-- Acceso -->
+      <section id="vista-login" class="caja oculto">
+        <h2>Entrar</h2>
+        <form id="form-login">
+          <label for="correo">Correo</label>
+          <input type="email" id="correo" autocomplete="username" required>
+          <label for="clave">Contraseña</label>
+          <input type="password" id="clave" autocomplete="current-password" required>
+          <p id="error-login" class="error oculto"></p>
+          <button type="submit" class="boton" id="boton-entrar">Entrar</button>
+        </form>
+      </section>
+
+      <!-- Panel -->
+      <section id="vista-app" class="oculto">
+        <div class="caja centro">
+          <div class="estado-fila"><span id="estado-porton" class="chip">Portón</span></div>
+          <button id="abrir-ahora" class="abrir" type="button">Abrir portón</button>
+          <p id="mensaje-abrir" class="nota-suave"></p>
+        </div>
+
+        <div class="caja">
+          <h2>Crear link para una visita</h2>
+          <form id="form-enlace">
+            <label for="etiqueta">¿Para quién es?</label>
+            <input type="text" id="etiqueta" maxlength="60" placeholder="Ej: Fiesta de Ana, Plomero" autocomplete="off" required>
+
+            <div class="dos-col">
+              <div>
+                <label for="duracion">Dura</label>
+                <select id="duracion">
+                  <option value="1">1 hora</option>
+                  <option value="3">3 horas</option>
+                  <option value="6" selected>6 horas</option>
+                  <option value="12">12 horas</option>
+                  <option value="24">1 día</option>
+                  <option value="48">2 días</option>
+                  <option value="168">7 días</option>
+                  <option value="fecha">Hasta una fecha…</option>
+                </select>
+              </div>
+              <div>
+                <label for="usos">Aperturas</label>
+                <select id="usos">
+                  <option value="1">1 vez</option>
+                  <option value="2">2 veces</option>
+                  <option value="5">5 veces</option>
+                  <option value="10" selected>10 veces</option>
+                  <option value="30">30 veces</option>
+                  <option value="">Sin límite</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="bloque-fecha" class="oculto">
+              <label for="hasta">Vence el</label>
+              <input type="datetime-local" id="hasta">
+            </div>
+
+            <p id="error-enlace" class="error oculto"></p>
+            <button type="submit" class="boton" id="boton-crear">Crear link</button>
+          </form>
+
+          <div id="enlace-creado" class="oculto">
+            <div class="enlace-creado" id="texto-enlace-creado"></div>
+            <div class="acciones">
+              <button type="button" class="mini" id="copiar-nuevo">Copiar</button>
+              <button type="button" class="mini oculto" id="compartir-nuevo">Compartir</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="caja">
+          <h2>Links</h2>
+          <p id="estado-enlaces" class="vacio"></p>
+          <div id="lista-enlaces"></div>
+        </div>
+
+        <div class="caja">
+          <h2>Historial de aperturas</h2>
+          <p id="estado-historial" class="vacio"></p>
+          <div id="lista-historial"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="pie-sesion" class="oculto">
+      <button id="cerrar-sesion">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <!-- Ventana de confirmar -->
+  <div id="fondo-confirmar" class="fondo-modal oculto">
+    <div class="cuadro-modal">
+      <p id="texto-confirmar"></p>
+      <div class="botones">
+        <button type="button" class="mini" id="cancelar-confirmar">Cancelar</button>
+        <button type="button" class="mini peligro" id="aceptar-confirmar">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script>
+    const db = window.supabase.createClient(window.GARAGE.SUPABASE_URL, window.GARAGE.SUPABASE_KEY);
+    const el = (id) => document.getElementById(id);
+
+    function escapar(t) {
+      return String(t == null ? "" : t)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    function fechaCR(iso) {
+      return new Date(iso).toLocaleString("es-CR", {
+        timeZone: "America/Costa_Rica", dateStyle: "short", timeStyle: "short"
+      });
+    }
+
+    function linkDe(codigo) {
+      return new URL("abrir.html?c=" + encodeURIComponent(codigo), location.href).href;
+    }
+
+    let enlacesPorId = {};
+    let temporizador = null;
+
+    // ---------- Acceso ----------
+    function mostrarLogin() {
+      el("vista-login").classList.remove("oculto");
+      el("vista-app").classList.add("oculto");
+      el("pie-sesion").classList.add("oculto");
+      if (temporizador) { clearInterval(temporizador); temporizador = null; }
+    }
+
+    function mostrarApp() {
+      el("vista-login").classList.add("oculto");
+      el("vista-app").classList.remove("oculto");
+      el("pie-sesion").classList.remove("oculto");
+      cargarTodo();
+      if (!temporizador) {
+        temporizador = setInterval(function () { if (!document.hidden) cargarEstado(); }, 4000);
+      }
+    }
+
+    el("form-login").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const err = el("error-login");
+      err.classList.add("oculto");
+      el("boton-entrar").disabled = true;
+      const r = await db.auth.signInWithPassword({ email: el("correo").value.trim(), password: el("clave").value });
+      el("boton-entrar").disabled = false;
+      if (r.error) {
+        err.textContent = "Correo o contraseña incorrectos.";
+        err.classList.remove("oculto");
+        return;
+      }
+      el("clave").value = "";
+      mostrarApp();
+    });
+
+    el("cerrar-sesion").addEventListener("click", async function () {
+      const ok = await confirmar("¿Cerrar sesión?", "Cerrar sesión");
+      if (!ok) return;
+      await db.auth.signOut();
+      mostrarLogin();
+    });
+
+    // ---------- Ventana de confirmar ----------
+    function confirmar(texto, boton) {
+      return new Promise(function (resolver) {
+        const fondo = el("fondo-confirmar");
+        el("texto-confirmar").textContent = texto;
+        el("aceptar-confirmar").textContent = boton || "Confirmar";
+        fondo.classList.remove("oculto");
+        function cerrar(v) { fondo.classList.add("oculto"); resolver(v); }
+        el("aceptar-confirmar").onclick = function () { cerrar(true); };
+        el("cancelar-confirmar").onclick = function () { cerrar(false); };
+        fondo.onclick = function (e) { if (e.target === fondo) cerrar(false); };
+      });
+    }
+
+    // ---------- Estado del portón ----------
+    async function cargarEstado() {
+      const r = await db.from("estado").select("abierto, visto_en").eq("id", 1).maybeSingle();
+      const chip = el("estado-porton");
+      chip.className = "chip";
+      if (r.error || !r.data) { chip.textContent = "Portón sin datos"; chip.classList.add("sin"); return; }
+      const visto = r.data.visto_en ? Date.now() - new Date(r.data.visto_en).getTime() : null;
+      if (visto === null || visto > 30000) {
+        chip.textContent = "Portón sin conexión";
+        chip.classList.add("sin");
+      } else if (r.data.abierto === null) {
+        chip.textContent = "Portón conectado";
+      } else if (r.data.abierto) {
+        chip.textContent = "Portón abierto";
+        chip.classList.add("abierto");
+      } else {
+        chip.textContent = "Portón cerrado";
+        chip.classList.add("cerrado");
+      }
+    }
+
+    // ---------- Abrir ahora ----------
+    let abriendo = false;
+    el("abrir-ahora").addEventListener("click", async function () {
+      if (abriendo) return;
+      abriendo = true;
+      const b = el("abrir-ahora");
+      b.disabled = true;
+      b.textContent = "Abriendo…";
+      el("mensaje-abrir").textContent = "";
+      const r = await db.rpc("abrir_admin");
+      if (r.error || !r.data) {
+        el("mensaje-abrir").textContent = "No se pudo enviar la orden.";
+      } else if (r.data.ok) {
+        el("mensaje-abrir").textContent = "Orden enviada.";
+      } else if (r.data.motivo === "espera") {
+        el("mensaje-abrir").textContent = "Espera unos segundos e intenta de nuevo.";
+      } else {
+        el("mensaje-abrir").textContent = "No tienes permiso para abrir.";
+      }
+      cargarHistorial();
+      setTimeout(function () { b.disabled = false; b.textContent = "Abrir portón"; abriendo = false; }, 6000);
+    });
+
+    // ---------- Crear links ----------
+    el("duracion").addEventListener("change", function () {
+      el("bloque-fecha").classList.toggle("oculto", this.value !== "fecha");
+    });
+
+    el("form-enlace").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const err = el("error-enlace");
+      err.classList.add("oculto");
+
+      const etiqueta = el("etiqueta").value.trim();
+      if (!etiqueta) { err.textContent = "Escribe para quién es el link."; err.classList.remove("oculto"); return; }
+
+      let vence;
+      if (el("duracion").value === "fecha") {
+        if (!el("hasta").value) { err.textContent = "Elige la fecha y hora en que vence."; err.classList.remove("oculto"); return; }
+        vence = new Date(el("hasta").value);
+      } else {
+        vence = new Date(Date.now() + Number(el("duracion").value) * 3600 * 1000);
+      }
+      if (!(vence > new Date())) { err.textContent = "La fecha de vencimiento ya pasó."; err.classList.remove("oculto"); return; }
+
+      const usos = el("usos").value === "" ? null : Number(el("usos").value);
+
+      el("boton-crear").disabled = true;
+      const r = await db.from("enlaces")
+        .insert({ etiqueta: etiqueta, vence_en: vence.toISOString(), usos_max: usos })
+        .select("codigo").single();
+      el("boton-crear").disabled = false;
+
+      if (r.error || !r.data) {
+        console.error(r.error);
+        err.textContent = "No se pudo crear el link.";
+        err.classList.remove("oculto");
+        return;
+      }
+
+      const link = linkDe(r.data.codigo);
+      el("texto-enlace-creado").textContent = link;
+      el("enlace-creado").classList.remove("oculto");
+      el("enlace-creado").dataset.link = link;
+      el("enlace-creado").dataset.etiqueta = etiqueta;
+      el("etiqueta").value = "";
+      cargarEnlaces();
+    });
+
+    async function copiar(texto, boton) {
+      try {
+        await navigator.clipboard.writeText(texto);
+      } catch (e) {
+        const t = document.createElement("textarea");
+        t.value = texto; document.body.appendChild(t); t.select();
+        try { document.execCommand("copy"); } catch (e2) {}
+        document.body.removeChild(t);
+      }
+      if (boton) {
+        const antes = boton.textContent;
+        boton.textContent = "¡Copiado!";
+        setTimeout(function () { boton.textContent = antes; }, 1500);
+      }
+    }
+
+    if (navigator.share) el("compartir-nuevo").classList.remove("oculto");
+    el("copiar-nuevo").addEventListener("click", function () {
+      copiar(el("enlace-creado").dataset.link, this);
+    });
+    el("compartir-nuevo").addEventListener("click", function () {
+      const d = el("enlace-creado").dataset;
+      navigator.share({ title: "Acceso al garage", text: "Acceso al garage (" + d.etiqueta + "):", url: d.link }).catch(function () {});
+    });
+
+    // ---------- Lista de links ----------
+    function estadoDe(e) {
+      if (e.revocado) return ["revocado", "Revocado"];
+      if (new Date(e.vence_en) < new Date()) return ["vencido", "Vencido"];
+      if (e.usos_max !== null && e.usos >= e.usos_max) return ["agotado", "Agotado"];
+      return ["activo", "Activo"];
+    }
+
+    async function cargarEnlaces() {
+      const info = el("estado-enlaces");
+      const r = await db.from("enlaces")
+        .select("id, codigo, etiqueta, creado_en, vence_en, usos_max, usos, revocado, perfiles(nombre)")
+        .order("creado_en", { ascending: false }).limit(40);
+      if (r.error) { console.error(r.error); info.textContent = "No se pudieron cargar los links."; el("lista-enlaces").innerHTML = ""; return; }
+
+      enlacesPorId = {};
+      r.data.forEach(function (e) { enlacesPorId[e.id] = e; });
+      if (r.data.length === 0) { info.textContent = "Todavía no has creado links."; el("lista-enlaces").innerHTML = ""; return; }
+      info.textContent = "";
+
+      el("lista-enlaces").innerHTML = r.data.map(function (e) {
+        const est = estadoDe(e);
+        const uso = (n) => n + (n === 1 ? " uso" : " usos");
+        const usosTxt = e.usos_max === null ? uso(e.usos) + " (sin límite)" : e.usos + " de " + uso(e.usos_max);
+        const creador = e.perfiles && e.perfiles.nombre ? " · " + escapar(e.perfiles.nombre) : "";
+        const activo = est[0] === "activo";
+        return `
+          <div class="fila">
+            <div class="fila-cab"><strong>${escapar(e.etiqueta || "(sin nombre)")}</strong><span class="etiqueta-estado ${est[0]}">${est[1]}</span></div>
+            <small>Vence ${escapar(fechaCR(e.vence_en))} · ${escapar(usosTxt)}${creador}</small>
+            <div class="acciones">
+              ${activo ? `<button class="mini" data-copiar="${escapar(e.id)}">Copiar link</button>` : ""}
+              ${activo ? `<button class="mini peligro" data-revocar="${escapar(e.id)}">Revocar</button>` : ""}
+              <button class="mini peligro" data-borrar="${escapar(e.id)}">Eliminar</button>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    el("lista-enlaces").addEventListener("click", async function (ev) {
+      const bc = ev.target.closest("[data-copiar]");
+      const br = ev.target.closest("[data-revocar]");
+      const bb = ev.target.closest("[data-borrar]");
+
+      if (bc) {
+        const e = enlacesPorId[bc.dataset.copiar];
+        if (e) copiar(linkDe(e.codigo), bc);
+        return;
+      }
+      if (br) {
+        const e = enlacesPorId[br.dataset.revocar];
+        if (!e) return;
+        if (!(await confirmar("¿Revocar el link de " + e.etiqueta + "? Dejará de funcionar ya.", "Revocar"))) return;
+        const r = await db.from("enlaces").update({ revocado: true }).eq("id", e.id);
+        if (r.error) { alert("No se pudo revocar el link."); return; }
+        cargarEnlaces();
+        return;
+      }
+      if (bb) {
+        const e = enlacesPorId[bb.dataset.borrar];
+        if (!e) return;
+        if (!(await confirmar("¿Eliminar el link de " + e.etiqueta + "? Luego no lo puedes recuperar.", "Eliminar"))) return;
+        const r = await db.from("enlaces").delete().eq("id", e.id);
+        if (r.error) { alert("No se pudo eliminar el link."); return; }
+        cargarEnlaces();
+        cargarHistorial();
+      }
+    });
+
+    // ---------- Historial ----------
+    const MOTIVOS = { revocado: "link revocado", aun_no: "aún no activo", vencido: "link vencido", sin_usos: "sin usos" };
+
+    async function cargarHistorial() {
+      const info = el("estado-historial");
+      const r = await db.from("aperturas")
+        .select("creado_en, origen, ok, motivo, enlaces(etiqueta), perfiles(nombre)")
+        .order("creado_en", { ascending: false }).limit(25);
+      if (r.error) { console.error(r.error); info.textContent = "No se pudo cargar el historial."; el("lista-historial").innerHTML = ""; return; }
+      if (r.data.length === 0) { info.textContent = "Todavía no hay aperturas."; el("lista-historial").innerHTML = ""; return; }
+      info.textContent = "";
+      el("lista-historial").innerHTML = r.data.map(function (a) {
+        const quien = a.origen === "admin"
+          ? "Admin" + (a.perfiles && a.perfiles.nombre ? " · " + a.perfiles.nombre : "")
+          : (a.enlaces && a.enlaces.etiqueta ? a.enlaces.etiqueta : "Link eliminado");
+        const res = a.ok ? "Abrió" : "No abrió (" + (MOTIVOS[a.motivo] || a.motivo || "error") + ")";
+        return `
+          <div class="fila">
+            <div class="fila-cab"><strong>${escapar(quien)}</strong><span class="etiqueta-estado ${a.ok ? "activo" : "revocado"}">${a.ok ? "OK" : "Fallo"}</span></div>
+            <small>${escapar(fechaCR(a.creado_en))} · ${escapar(res)}</small>
+          </div>`;
+      }).join("");
+    }
+
+    function cargarTodo() { cargarEstado(); cargarEnlaces(); cargarHistorial(); }
+
+    // ---------- Inicio ----------
+    (async function () {
+      const s = await db.auth.getSession();
+      if (s.data && s.data.session) mostrarApp(); else mostrarLogin();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0d1117">
+  <title>Portón · Garage Herrera</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <div class="contenedor">
+    <header>
+      <h1>Garage Herrera</h1>
+      <p class="lema">Acceso temporal</p>
+    </header>
+
+    <main>
+      <p id="cargando" class="vacio">Revisando tu link…</p>
+
+      <section id="vista-ok" class="caja centro oculto">
+        <p id="etiqueta" style="margin:0 0 2px;font-size:17px;font-weight:600"></p>
+        <p id="detalle" class="nota-suave" style="margin:0 0 12px"></p>
+        <span id="estado-porton" class="chip">Portón</span>
+        <button id="boton-abrir" class="abrir" type="button">Abrir portón</button>
+        <p id="mensaje" class="nota-suave"></p>
+      </section>
+
+      <section id="vista-error" class="caja centro oculto">
+        <p id="texto-error" style="margin:0;font-size:16px"></p>
+        <p class="nota-suave">Si crees que es un error, pídele otro link a quien te lo envió.</p>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script>
+    const db = window.supabase.createClient(window.GARAGE.SUPABASE_URL, window.GARAGE.SUPABASE_KEY);
+    const codigo = new URLSearchParams(location.search).get("c") || "";
+    const el = (id) => document.getElementById(id);
+
+    const MOTIVOS = {
+      invalido: "Este link no existe.",
+      revocado: "Este link fue cancelado.",
+      aun_no: "Este link todavía no está activo.",
+      vencido: "Este link ya venció.",
+      sin_usos: "Este link ya no tiene usos disponibles."
+    };
+
+    function fechaCR(iso) {
+      return new Date(iso).toLocaleString("es-CR", {
+        timeZone: "America/Costa_Rica", dateStyle: "medium", timeStyle: "short"
+      });
+    }
+
+    function mostrarError(motivo) {
+      el("cargando").classList.add("oculto");
+      el("vista-ok").classList.add("oculto");
+      el("vista-error").classList.remove("oculto");
+      el("texto-error").textContent = MOTIVOS[motivo] || "No se pudo abrir el link.";
+    }
+
+    function pintarEstado(info) {
+      const chip = el("estado-porton");
+      const visto = info.visto_en ? Date.now() - new Date(info.visto_en).getTime() : null;
+      chip.className = "chip";
+      if (visto === null || visto > 30000 || info.abierto === null) {
+        chip.textContent = "Portón sin señal";
+        chip.classList.add("sin");
+      } else if (info.abierto) {
+        chip.textContent = "Portón abierto";
+        chip.classList.add("abierto");
+      } else {
+        chip.textContent = "Portón cerrado";
+        chip.classList.add("cerrado");
+      }
+    }
+
+    async function cargar(primera) {
+      const r = await db.rpc("estado_enlace", { p_codigo: codigo });
+      if (r.error || !r.data) {
+        if (primera) {
+          el("cargando").textContent = "No se pudo conectar. Revisa tu internet e intenta de nuevo.";
+        }
+        return;
+      }
+      const info = r.data;
+      if (!info.ok) { mostrarError(info.motivo); return; }
+
+      el("cargando").classList.add("oculto");
+      el("vista-error").classList.add("oculto");
+      el("vista-ok").classList.remove("oculto");
+      el("etiqueta").textContent = info.etiqueta || "Bienvenido";
+      const partes = ["Válido hasta " + fechaCR(info.vence_en)];
+      if (info.usos_restantes !== null && info.usos_restantes !== undefined) {
+        partes.push(info.usos_restantes + (info.usos_restantes === 1 ? " apertura disponible" : " aperturas disponibles"));
+      }
+      el("detalle").textContent = partes.join(" · ");
+      pintarEstado(info);
+    }
+
+    let ocupado = false;
+    el("boton-abrir").addEventListener("click", async function () {
+      if (ocupado) return;
+      ocupado = true;
+      const boton = el("boton-abrir");
+      boton.disabled = true;
+      boton.textContent = "Abriendo…";
+      el("mensaje").textContent = "";
+
+      const r = await db.rpc("usar_enlace", { p_codigo: codigo });
+      if (r.error || !r.data) {
+        el("mensaje").textContent = "No se pudo enviar la orden. Intenta de nuevo.";
+      } else if (r.data.ok) {
+        el("mensaje").textContent = "Orden enviada. El portón se está moviendo.";
+      } else if (r.data.motivo === "espera") {
+        el("mensaje").textContent = "Espera unos segundos e intenta de nuevo.";
+      } else {
+        mostrarError(r.data.motivo);
+      }
+
+      await cargar(false);
+      setTimeout(function () {
+        boton.disabled = false;
+        boton.textContent = "Abrir portón";
+        ocupado = false;
+      }, 6000);
+    });
+
+    if (!codigo) {
+      mostrarError("invalido");
+    } else {
+      cargar(true);
+      setInterval(function () { if (!document.hidden && !ocupado) cargar(false); }, 5000);
+    }
+  </script>
+</body>
+</html>
