@@ -282,7 +282,19 @@
         return true;
       } catch (e) {
         console.error(e);
-        if (msg) msg.textContent = "No se pudo activar. Revisa que el teléfono tenga " + (esApple ? "Face ID" : "huella o Face ID") + " configurado e intenta de nuevo.";
+        const nombre = (e && (e.name || e.code)) || "";
+        const texto = String((e && e.message) || "");
+        if (msg) {
+          if (nombre === "InvalidStateError" || /already|registered|ya existe|exclude/i.test(texto)) {
+            guardar("biometria");
+            msg.textContent = "Este teléfono ya tiene la llave activada. Cierra sesión y entra con " + (esApple ? "Face ID" : "huella o Face ID") + ".";
+          } else if (nombre === "NotAllowedError" || /cancel|not allowed|timed out/i.test(texto)) {
+            msg.textContent = "Se canceló. Toca el botón de nuevo y acepta el Face ID cuando lo pida.";
+          } else {
+            msg.textContent = "No se pudo activar. Revisa que el teléfono tenga " + (esApple ? "Face ID" : "huella o Face ID") + " configurado e intenta de nuevo." +
+              (nombre || texto ? " (Detalle: " + [nombre, texto].filter(Boolean).join(" · ").slice(0, 140) + ")" : "");
+          }
+        }
         return false;
       }
     }
