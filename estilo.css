@@ -28,7 +28,8 @@ body {
 .contenedor {
   max-width: 520px;
   margin: 0 auto;
-  padding: 28px 16px 48px;
+  /* Deja libre la zona de la hora/batería (notch) y la barra inferior del iPhone */
+  padding: calc(28px + env(safe-area-inset-top, 0px)) 16px calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
 .oculto { display: none !important; }
