@@ -50,7 +50,7 @@
           <button type="submit" class="boton" id="boton-entrar">Entrar</button>
         </form>
         <div id="bio-opciones" class="oculto">
-          <p class="nota-suave">O entra con</p>
+          <div style="height:22px" aria-hidden="true"></div>
           <div class="bio-fila">
             <button type="button" class="btn-cara oculto" id="entrar-huella" aria-label="Entrar con huella" title="Entrar con huella">
               <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -83,15 +83,15 @@
           <h2>Crear link para visitas</h2>
           <form id="form-enlace">
             <label for="etiqueta">Nombre de la actividad</label>
-            <input type="text" id="etiqueta" maxlength="60" placeholder="Ej: Reunión de..." autocomplete="off" required>
+            <input type="text" id="etiqueta" maxlength="60" placeholder="Ej: Reunión de... (si lo dejas vacío: Apertura rápida)" autocomplete="off">
 
             <div class="dos-col">
               <div>
                 <label for="duracion">Dura</label>
                 <select id="duracion">
-                  <option value="1">1 hora</option>
+                  <option value="1" selected>1 hora</option>
                   <option value="3">3 horas</option>
-                  <option value="6" selected>6 horas</option>
+                  <option value="6">6 horas</option>
                   <option value="12">12 horas</option>
                   <option value="24">1 día</option>
                   <option value="48">2 días</option>
@@ -392,8 +392,7 @@
       const err = el("error-enlace");
       err.classList.add("oculto");
 
-      const etiqueta = el("etiqueta").value.trim();
-      if (!etiqueta) { err.textContent = "Escribe para quién es el link."; err.classList.remove("oculto"); return; }
+      const etiqueta = el("etiqueta").value.trim() || "Apertura rápida";
 
       let vence;
       if (el("duracion").value === "fecha") {
